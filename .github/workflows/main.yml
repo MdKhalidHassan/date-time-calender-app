@@ -18,20 +18,23 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+
     - name: Find and build Gradle project
       run: |
-        # gradlew ফাইলটি যেখানেই থাকুক না কেন খুঁজে বের করে রান করবে
         GRADLEW_PATH=$(find . -name gradlew -type f | head -n 1)
         if [ -z "$GRADLEW_PATH" ]; then
-          echo "No gradlew file found! Running gradle directly..."
-          gradle assembleDebug
+          DIR="."
+          EXEC="gradle"
         else
-          echo "Found gradlew at: $GRADLEW_PATH"
           DIR=$(dirname "$GRADLEW_PATH")
-          cd "$DIR"
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          EXEC="./gradlew"
+          chmod +x "$GRADLEW_PATH"
         fi
+        
+        cd "$DIR"
+        $EXEC assembleDebug -Dorg.gradle.daemon=false -Didea.active=false --no-daemon
 
     - name: Find and Upload APK
       uses: actions/upload-artifact@v4
