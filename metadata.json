@@ -1,0 +1,6 @@
+{
+  "name": "DateTime",
+  "description": "Live real-time Date, Time, and interactive Calendar app with dual language support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
