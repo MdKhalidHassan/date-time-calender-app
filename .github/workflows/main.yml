@@ -17,16 +17,24 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+    - name: Find and build Gradle project
+      run: |
+        # gradlew ফাইলটি যেখানেই থাকুক না কেন খুঁজে বের করে রান করবে
+        GRADLEW_PATH=$(find . -name gradlew -type f | head -n 1)
+        if [ -z "$GRADLEW_PATH" ]; then
+          echo "No gradlew file found! Running gradle directly..."
+          gradle assembleDebug
+        else
+          echo "Found gradlew at: $GRADLEW_PATH"
+          DIR=$(dirname "$GRADLEW_PATH")
+          cd "$DIR"
+          chmod +x gradlew
+          ./gradlew assembleDebug
+        fi
 
-    - name: Build with Gradle
-      run: ./gradlew assembleDebug
-
-    - name: Upload APK
+    - name: Find and Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+        path: "**/build/outputs/apk/debug/*.apk"
