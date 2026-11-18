@@ -49,6 +49,7 @@ fun DateAlarmListSection(
     onToggleAlarm: (DateAlarm, Boolean) -> Unit,
     onDeleteAlarm: (DateAlarm) -> Unit,
     onAddNewDateAlarm: () -> Unit,
+    isAllDatesMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val monthName = DateFormatter.getMonthName(selectedMonth, isBengali)
@@ -90,7 +91,11 @@ fun DateAlarmListSection(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = if (isBengali) "$dayStr $monthName $yearStr-এর অ্যালার্ম ও রিমাইন্ডার" else "Alarms & Reminders for $dayStr $monthName $yearStr",
+                        text = if (isAllDatesMode) {
+                            if (isBengali) "সকল তারিখের অ্যালার্ম (${DateFormatter.formatNumber(alarms.size, true)}টি)" else "All Scheduled Date Alarms (${alarms.size})"
+                        } else {
+                            if (isBengali) "$dayStr $monthName $yearStr-এর অ্যালার্ম ও রিমাইন্ডার" else "Alarms & Reminders for $dayStr $monthName $yearStr"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -138,19 +143,20 @@ fun DateAlarmListSection(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = if (isBengali)
-                                "এই তারিখে কোনো নির্দিষ্ট অ্যালার্ম বা রিমাইন্ডার নেই।"
-                            else
-                                "No alarms scheduled for this date.",
+                            text = if (isAllDatesMode) {
+                                if (isBengali) "এখনো কোনো তারিখের অ্যালার্ম বা রিমাইন্ডার নেই।" else "No date alarms scheduled yet."
+                            } else {
+                                if (isBengali) "এই তারিখে কোনো নির্দিষ্ট অ্যালার্ম বা রিমাইন্ডার নেই।" else "No alarms scheduled for this date."
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = if (isBengali)
-                                "উপরে '+ নতুন তারিখের অ্যালার্ম' বাটনে চাপ দিয়ে যেকোনো সময়ে বাজবে এমন অ্যালার্ম ও রিমাইন্ডার যোগ করতে পারেন।"
+                                "উপরে '+ নতুন তারিখের অ্যালার্ম' বাটনে চাপ দিয়ে যেকোনো তারিখ ও সময়ে অ্যালার্ম এবং রিমাইন্ডার যোগ করতে পারেন।"
                             else
-                                "Tap 'Add Date Alarm' above to schedule an alarm with reminder notes.",
+                                "Tap 'Add Date Alarm' above to pick any date and schedule an alarm with reminder notes.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline
                         )

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.example.data.model.DateAlarm
+import com.example.data.model.HolidayEntity
 import com.example.data.model.RegularAlarm
 import com.example.receiver.AlarmReceiver
 import java.util.Calendar
@@ -153,6 +154,109 @@ class AlarmScheduler(private val context: Context) {
         return null
     }
 
+    fun scheduleHolidayReminders(
+        holidays: List<HolidayEntity>,
+        daysBefore: Int,
+        hour: Int,
+        minute: Int
+    ) {
+        holidays.forEach { holiday ->
+            if (holiday.reminderEnabled) {
+                scheduleHolidayReminder(holiday, daysBefore, hour, minute)
+            } else {
+                cancelHolidayReminder(holiday)
+            }
+        }
+    }
+
+    fun cancelHolidayReminders(holidays: List<HolidayEntity>) {
+        holidays.forEach { cancelHolidayReminder(it) }
+    }
+
+    fun scheduleHolidayReminder(
+        holiday: HolidayEntity,
+        daysBefore: Int,
+        hour: Int,
+        minute: Int
+    ) {
+        if (!holiday.reminderEnabled) {
+            cancelHolidayReminder(holiday)
+            return
+        }
+        val triggerMillis = calculateHolidayTriggerMillis(holiday, daysBefore, hour, minute)
+        if (triggerMillis <= System.currentTimeMillis()) {
+            cancelHolidayReminder(holiday)
+            return
+        }
+
+        val whenLabel = when (daysBefore) {
+            0 -> "Today (${holiday.dateIso})"
+            1 -> "Tomorrow (${holiday.dateIso})"
+            else -> "In $daysBefore days (${holiday.dateIso})"
+        }
+
+        val displayTitle = if (holiday.localName != holiday.name && holiday.localName.isNotBlank()) {
+            "${holiday.localName} (${holiday.name})"
+        } else {
+            holiday.name
+        }
+
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            action = AlarmReceiver.ACTION_HOLIDAY_REMINDER
+            putExtra(AlarmReceiver.EXTRA_ALARM_ID, getHolidayRequestCode(holiday.id).toLong())
+            putExtra(AlarmReceiver.EXTRA_ALARM_TITLE, "Upcoming Holiday: $displayTitle")
+            putExtra(AlarmReceiver.EXTRA_ALARM_DESC, "${holiday.countryName} • $whenLabel")
+            putExtra(AlarmReceiver.EXTRA_ALARM_VIBRATE, true)
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            getHolidayRequestCode(holiday.id),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        setExactAlarm(triggerMillis, pendingIntent)
+    }
+
+    fun cancelHolidayReminder(holiday: HolidayEntity) {
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            action = AlarmReceiver.ACTION_HOLIDAY_REMINDER
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            getHolidayRequestCode(holiday.id),
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        if (pendingIntent != null && alarmManager != null) {
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+        }
+    }
+
     private fun getRegularAlarmRequestCode(id: Long): Int = (100000 + (id % 800000)).toInt()
     private fun getDateAlarmRequestCode(id: Long): Int = (900000 + (id % 800000)).toInt()
+    private fun getHolidayRequestCode(id: String): Int = 2000000 + (id.hashCode() and 0x000FFFFF)
+
+    companion object {
+        fun calculateHolidayTriggerMillis(
+            holiday: HolidayEntity,
+            daysBefore: Int,
+            hour: Int,
+            minute: Int
+        ): Long {
+            val cal = Calendar.getInstance().apply {
+                set(Calendar.YEAR, holiday.year)
+                set(Calendar.MONTH, holiday.month)
+                set(Calendar.DAY_OF_MONTH, holiday.day)
+                set(Calendar.HOUR_OF_DAY, hour)
+                set(Calendar.MINUTE, minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                add(Calendar.DAY_OF_YEAR, -daysBefore.coerceAtLeast(0))
+            }
+            return cal.timeInMillis
+        }
+    }
 }

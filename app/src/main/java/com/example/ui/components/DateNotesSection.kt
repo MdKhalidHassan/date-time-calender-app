@@ -73,6 +73,7 @@ fun DateNotesSection(
     onDeleteNote: (DateNote) -> Unit,
     allNotes: List<DateNote> = emptyList(),
     onSelectDateOnCalendar: ((year: Int, month: Int, day: Int) -> Unit)? = null,
+    isAllDatesMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val monthName = DateFormatter.getMonthName(selectedMonth, isBengali)
@@ -156,8 +157,8 @@ fun DateNotesSection(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = if (searchScopeAllDates && hasAllNotesScope) {
-                            if (isBengali) "সকল সংরক্ষিত নোটবুক (${DateFormatter.formatNumber(allNotes.size, true)}টি)" else "All Saved Notes (${allNotes.size})"
+                        text = if (isAllDatesMode || (searchScopeAllDates && hasAllNotesScope)) {
+                            if (isBengali) "সকল সংরক্ষিত নোটবুক (${DateFormatter.formatNumber(notes.size.coerceAtLeast(allNotes.size), true)}টি)" else "All Saved Notes (${notes.size.coerceAtLeast(allNotes.size)})"
                         } else {
                             if (isBengali) "$dayStr $monthName $yearStr-এর নোটবুক" else "Notes for $dayStr $monthName $yearStr"
                         },

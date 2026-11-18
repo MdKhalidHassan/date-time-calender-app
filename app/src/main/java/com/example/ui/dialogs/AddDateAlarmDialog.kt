@@ -2,6 +2,8 @@ package com.example.ui.dialogs
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.NotificationImportant
@@ -22,10 +25,13 @@ import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -33,9 +39,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimeInput
 import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,8 +54,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.util.DateFormatter
 import java.util.Calendar
+import java.util.TimeZone
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddDateAlarmDialog(
     initialYear: Int,
@@ -73,14 +82,19 @@ fun AddDateAlarmDialog(
         is24Hour = false
     )
 
+    var selectedYear by remember { mutableIntStateOf(initialYear) }
+    var selectedMonth by remember { mutableIntStateOf(initialMonth) }
+    var selectedDay by remember { mutableIntStateOf(initialDay) }
+    var showDatePicker by remember { mutableStateOf(false) }
+
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var vibrate by remember { mutableStateOf(true) }
     var useCompactTimeInput by remember { mutableStateOf(true) }
 
-    val monthName = DateFormatter.getMonthName(initialMonth, isBengali)
-    val dayStr = DateFormatter.formatNumber(initialDay, isBengali)
-    val yearStr = DateFormatter.formatNumber(initialYear, isBengali)
+    val monthName = DateFormatter.getMonthName(selectedMonth, isBengali)
+    val dayStr = DateFormatter.formatNumber(selectedDay, isBengali)
+    val yearStr = DateFormatter.formatNumber(selectedYear, isBengali)
 
     val displayH = valFor12H(timePickerState.hour)
     val amPmStr = if (timePickerState.hour < 12) (if (isBengali) "পূর্বাহ্ন (AM)" else "AM") else (if (isBengali) "অপরাহ্ন (PM)" else "PM")
@@ -122,6 +136,99 @@ fun AddDateAlarmDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Interactive Date Selector Card
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = if (isBengali) "নির্বাচিত তারিখ:" else "Selected Date:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    )
+                                    Text(
+                                        text = "$dayStr $monthName $yearStr",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.testTag("date_alarm_selected_date_text")
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = { showDatePicker = true },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.testTag("date_alarm_pick_date_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Event,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isBengali) "তারিখ বাছুন" else "Pick Date",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Quick Date Chips: Today, Tomorrow, +7 Days
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val quickOffsets = listOf(
+                                0 to (if (isBengali) "আজ" else "Today"),
+                                1 to (if (isBengali) "আগামীকাল" else "Tomorrow"),
+                                7 to (if (isBengali) "+৭ দিন" else "+7 Days")
+                            )
+                            quickOffsets.forEach { (offsetDays, label) ->
+                                val targetCal = Calendar.getInstance().apply {
+                                    add(Calendar.DAY_OF_YEAR, offsetDays)
+                                }
+                                val ty = targetCal.get(Calendar.YEAR)
+                                val tm = targetCal.get(Calendar.MONTH)
+                                val td = targetCal.get(Calendar.DAY_OF_MONTH)
+                                val isSelected = selectedYear == ty && selectedMonth == tm && selectedDay == td
+
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedYear = ty
+                                        selectedMonth = tm
+                                        selectedDay = td
+                                    },
+                                    label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Time & Style Header
                 Surface(
                     shape = RoundedCornerShape(12.dp),
@@ -258,9 +365,9 @@ fun AddDateAlarmDialog(
                         title.trim()
                     }
                     onSave(
-                        initialYear,
-                        initialMonth,
-                        initialDay,
+                        selectedYear,
+                        selectedMonth,
+                        selectedDay,
                         timePickerState.hour,
                         timePickerState.minute,
                         finalTitle,
@@ -279,6 +386,44 @@ fun AddDateAlarmDialog(
             }
         }
     )
+
+    if (showDatePicker) {
+        val utcMillis = remember(selectedYear, selectedMonth, selectedDay) {
+            Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                clear()
+                set(selectedYear, selectedMonth, selectedDay, 0, 0, 0)
+            }.timeInMillis
+        }
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = utcMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let { millis ->
+                            val pickedCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                                timeInMillis = millis
+                            }
+                            selectedYear = pickedCal.get(Calendar.YEAR)
+                            selectedMonth = pickedCal.get(Calendar.MONTH)
+                            selectedDay = pickedCal.get(Calendar.DAY_OF_MONTH)
+                        }
+                        showDatePicker = false
+                    },
+                    modifier = Modifier.testTag("confirm_alarm_date_picker_btn")
+                ) {
+                    Text(if (isBengali) "নির্বাচন করুন" else "Select")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text(if (isBengali) "বাতিল" else "Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 }
 
 private fun valFor12H(hour24: Int): Int {

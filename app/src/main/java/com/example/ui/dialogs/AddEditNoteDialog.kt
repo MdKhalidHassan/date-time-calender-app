@@ -2,6 +2,8 @@ package com.example.ui.dialogs
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,7 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
-import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
@@ -24,19 +26,24 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimeInput
 import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,8 +55,9 @@ import androidx.compose.ui.unit.dp
 import com.example.data.model.DateNote
 import com.example.util.DateFormatter
 import java.util.Calendar
+import java.util.TimeZone
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddEditNoteDialog(
     year: Int,
@@ -59,7 +67,7 @@ fun AddEditNoteDialog(
     is24Hour: Boolean = false,
     isBengali: Boolean,
     onDismiss: () -> Unit,
-    onSave: (hour: Int, minute: Int, title: String, content: String) -> Unit
+    onSave: (year: Int, month: Int, day: Int, hour: Int, minute: Int, title: String, content: String) -> Unit
 ) {
     val isEditMode = existingNote != null
     val currentCal = Calendar.getInstance()
@@ -72,13 +80,18 @@ fun AddEditNoteDialog(
         is24Hour = is24Hour
     )
 
+    var selectedYear by remember { mutableIntStateOf(existingNote?.year ?: year) }
+    var selectedMonth by remember { mutableIntStateOf(existingNote?.month ?: month) }
+    var selectedDay by remember { mutableIntStateOf(existingNote?.day ?: day) }
+    var showDatePicker by remember { mutableStateOf(false) }
+
     var title by remember { mutableStateOf(existingNote?.title ?: "") }
     var content by remember { mutableStateOf(existingNote?.content ?: "") }
     var useCompactTimeInput by remember { mutableStateOf(true) }
 
-    val monthName = DateFormatter.getMonthName(year, isBengali)
-    val dayStr = DateFormatter.formatNumber(day, isBengali)
-    val yearStr = DateFormatter.formatNumber(year, isBengali)
+    val monthName = DateFormatter.getMonthName(selectedMonth, isBengali)
+    val dayStr = DateFormatter.formatNumber(selectedDay, isBengali)
+    val yearStr = DateFormatter.formatNumber(selectedYear, isBengali)
 
     // Formatted selected time preview
     val displayHour = if (is24Hour) {
@@ -135,6 +148,99 @@ fun AddEditNoteDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Interactive Date Selector Card
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = if (isBengali) "নোটের তারিখ:" else "Note Date:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    )
+                                    Text(
+                                        text = "$dayStr $monthName $yearStr",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.testTag("note_selected_date_text")
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = { showDatePicker = true },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.testTag("note_pick_date_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Event,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isBengali) "তারিখ বাছুন" else "Pick Date",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Quick Date Chips
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val quickOffsets = listOf(
+                                0 to (if (isBengali) "আজ" else "Today"),
+                                1 to (if (isBengali) "আগামীকাল" else "Tomorrow"),
+                                7 to (if (isBengali) "+৭ দিন" else "+7 Days")
+                            )
+                            quickOffsets.forEach { (offsetDays, label) ->
+                                val targetCal = Calendar.getInstance().apply {
+                                    add(Calendar.DAY_OF_YEAR, offsetDays)
+                                }
+                                val ty = targetCal.get(Calendar.YEAR)
+                                val tm = targetCal.get(Calendar.MONTH)
+                                val td = targetCal.get(Calendar.DAY_OF_MONTH)
+                                val isSelected = selectedYear == ty && selectedMonth == tm && selectedDay == td
+
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedYear = ty
+                                        selectedMonth = tm
+                                        selectedDay = td
+                                    },
+                                    label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // If editing existing note, show creation & history details
                 if (isEditMode && existingNote != null) {
                     Surface(
@@ -294,6 +400,9 @@ fun AddEditNoteDialog(
                         title.trim()
                     }
                     onSave(
+                        selectedYear,
+                        selectedMonth,
+                        selectedDay,
                         timePickerState.hour,
                         timePickerState.minute,
                         finalTitle,
@@ -317,4 +426,42 @@ fun AddEditNoteDialog(
             }
         }
     )
+
+    if (showDatePicker) {
+        val utcMillis = remember(selectedYear, selectedMonth, selectedDay) {
+            Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                clear()
+                set(selectedYear, selectedMonth, selectedDay, 0, 0, 0)
+            }.timeInMillis
+        }
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = utcMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let { millis ->
+                            val pickedCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                                timeInMillis = millis
+                            }
+                            selectedYear = pickedCal.get(Calendar.YEAR)
+                            selectedMonth = pickedCal.get(Calendar.MONTH)
+                            selectedDay = pickedCal.get(Calendar.DAY_OF_MONTH)
+                        }
+                        showDatePicker = false
+                    },
+                    modifier = Modifier.testTag("confirm_note_date_picker_btn")
+                ) {
+                    Text(if (isBengali) "নির্বাচন করুন" else "Select")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text(if (isBengali) "বাতিল" else "Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 }

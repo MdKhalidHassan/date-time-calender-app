@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.example.DateTimeApplication
+import com.example.MainActivity
 import com.example.R
 import com.example.alarm.AlarmPlayer
 import com.example.alarm.AlarmScheduler
@@ -22,6 +23,12 @@ class AlarmReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra(EXTRA_ALARM_TITLE) ?: "Alarm"
         val description = intent.getStringExtra(EXTRA_ALARM_DESC) ?: ""
         val vibrate = intent.getBooleanExtra(EXTRA_ALARM_VIBRATE, true)
+
+        if (intent.action == ACTION_HOLIDAY_REMINDER) {
+            showHolidayReminderNotification(context, alarmId.toInt(), title, description)
+            return
+        }
+
         val isRegular = intent.action == ACTION_REGULAR_ALARM
 
         // Play alarm ringtone and vibrate
@@ -55,7 +62,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val notification = NotificationCompat.Builder(context, DateTimeApplication.ALARM_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_app_icon)
+            .setSmallIcon(R.drawable.ic_notification_clock)
             .setContentTitle(title)
             .setContentText(if (description.isNotEmpty()) description else "Alarm is ringing")
             .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -93,9 +100,41 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
+    private fun showHolidayReminderNotification(
+        context: Context,
+        notificationId: Int,
+        title: String,
+        description: String
+    ) {
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openPendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notification = NotificationCompat.Builder(context, DateTimeApplication.HOLIDAY_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification_clock)
+            .setContentTitle(title)
+            .setContentText(description)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(description))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setAutoCancel(true)
+            .setContentIntent(openPendingIntent)
+            .build()
+
+        notificationManager.notify(notificationId, notification)
+    }
+
     companion object {
         const val ACTION_REGULAR_ALARM = "com.example.action.REGULAR_ALARM"
         const val ACTION_DATE_ALARM = "com.example.action.DATE_ALARM"
+        const val ACTION_HOLIDAY_REMINDER = "com.example.action.HOLIDAY_REMINDER"
         const val EXTRA_ALARM_ID = "extra_alarm_id"
         const val EXTRA_ALARM_TITLE = "extra_alarm_title"
         const val EXTRA_ALARM_DESC = "extra_alarm_desc"

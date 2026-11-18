@@ -8,22 +8,28 @@ import com.example.DateTimeApplication
 import com.example.alarm.AlarmScheduler
 import com.example.data.model.DateAlarm
 import com.example.data.model.DateNote
+import com.example.data.model.HolidayEntity
 import com.example.data.model.RegularAlarm
 import com.example.model.CalendarDay
 import com.example.model.SelectedDateInfo
 import com.example.model.TimeData
+import com.example.network.AvailableCountryDto
 import com.example.util.DateFormatter
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Locale
 import java.util.TimeZone
 
 class DateTimeViewModel(application: Application) : AndroidViewModel(application) {
@@ -31,10 +37,19 @@ class DateTimeViewModel(application: Application) : AndroidViewModel(application
     private val app = application as? DateTimeApplication
     private val alarmRepository = app?.alarmRepository
     private val noteRepository = app?.noteRepository
+    private val holidayRepository = app?.holidayRepository
     private val scheduler = AlarmScheduler(application)
 
     private val prefs = application.getSharedPreferences("datetime_prefs", Context.MODE_PRIVATE)
     private val KEY_TIMEZONE = "pref_user_timezone"
+    private val KEY_HOLIDAY_COUNTRY_CODE = "pref_holiday_country_code"
+    private val KEY_HOLIDAY_COUNTRY_NAME = "pref_holiday_country_name"
+    private val KEY_HOLIDAY_REMINDERS_ENABLED = "pref_holiday_reminders_enabled"
+    private val KEY_HOLIDAY_REMIND_DAYS_BEFORE = "pref_holiday_remind_days_before"
+    private val KEY_HOLIDAY_REMIND_HOUR = "pref_holiday_remind_hour"
+    private val KEY_HOLIDAY_REMIND_MINUTE = "pref_holiday_remind_minute"
+    private val KEY_HOLIDAY_LAST_SYNC_AT = "pref_holiday_last_sync_at"
+    private val KEY_HOLIDAY_LAST_SYNC_COUNTRY = "pref_holiday_last_sync_country"
 
     // Default to Asia/Dhaka if default is America/Los_Angeles, or use saved/system timezone
     private val initialTzId = prefs.getString(KEY_TIMEZONE, null) ?: run {
@@ -75,9 +90,51 @@ class DateTimeViewModel(application: Application) : AndroidViewModel(application
     private val _isBengali = MutableStateFlow(true)
     val isBengali: StateFlow<Boolean> = _isBengali.asStateFlow()
 
-    // 0 = Calendar & Clock, 1 = Regular Alarms, 2 = Date Alarms, 3 = Notes
+    // 0 = Calendar & Clock, 1 = Regular Alarms, 2 = Date Alarms, 3 = Notes, 4 = Compass, 5 = Holidays
     private val _activeTab = MutableStateFlow(0)
     val activeTab: StateFlow<Int> = _activeTab.asStateFlow()
+
+    // --- Government Holiday & Reminder State ---
+    private val _selectedCountryCode = MutableStateFlow(prefs.getString(KEY_HOLIDAY_COUNTRY_CODE, "") ?: "")
+    val selectedCountryCode: StateFlow<String> = _selectedCountryCode.asStateFlow()
+
+    private val _selectedCountryName = MutableStateFlow(prefs.getString(KEY_HOLIDAY_COUNTRY_NAME, "") ?: "")
+    val selectedCountryName: StateFlow<String> = _selectedCountryName.asStateFlow()
+
+    private val _holidayRemindersEnabled = MutableStateFlow(
+        prefs.getBoolean(KEY_HOLIDAY_REMINDERS_ENABLED, false)
+    )
+    val holidayRemindersEnabled: StateFlow<Boolean> = _holidayRemindersEnabled.asStateFlow()
+
+    private val _holidayRemindDaysBefore = MutableStateFlow(
+        prefs.getInt(KEY_HOLIDAY_REMIND_DAYS_BEFORE, 1).coerceIn(0, 30)
+    )
+    val holidayRemindDaysBefore: StateFlow<Int> = _holidayRemindDaysBefore.asStateFlow()
+
+    private val _holidayRemindHour = MutableStateFlow(
+        prefs.getInt(KEY_HOLIDAY_REMIND_HOUR, 9).coerceIn(0, 23)
+    )
+    val holidayRemindHour: StateFlow<Int> = _holidayRemindHour.asStateFlow()
+
+    private val _holidayRemindMinute = MutableStateFlow(
+        prefs.getInt(KEY_HOLIDAY_REMIND_MINUTE, 0).coerceIn(0, 59)
+    )
+    val holidayRemindMinute: StateFlow<Int> = _holidayRemindMinute.asStateFlow()
+
+    private val _availableCountries = MutableStateFlow<List<AvailableCountryDto>>(emptyList())
+    val availableCountries: StateFlow<List<AvailableCountryDto>> = _availableCountries.asStateFlow()
+
+    private val _countriesLoading = MutableStateFlow(false)
+    val countriesLoading: StateFlow<Boolean> = _countriesLoading.asStateFlow()
+
+    private val _holidaysLoading = MutableStateFlow(false)
+    val holidaysLoading: StateFlow<Boolean> = _holidaysLoading.asStateFlow()
+
+    private val _holidaysError = MutableStateFlow<String?>(null)
+    val holidaysError: StateFlow<String?> = _holidaysError.asStateFlow()
+
+    private val _lastHolidaySyncAt = MutableStateFlow(prefs.getLong(KEY_HOLIDAY_LAST_SYNC_AT, 0L))
+    val lastHolidaySyncAt: StateFlow<Long> = _lastHolidaySyncAt.asStateFlow()
 
     // --- Search Query State ---
     private val _searchQuery = MutableStateFlow("")
@@ -224,8 +281,33 @@ class DateTimeViewModel(application: Application) : AndroidViewModel(application
         initialValue = emptyList()
     )
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val holidays: StateFlow<List<HolidayEntity>> = _selectedCountryCode
+        .flatMapLatest { code ->
+            if (code.isBlank() || holidayRepository == null) {
+                flowOf(emptyList())
+            } else {
+                holidayRepository.observeHolidays(code)
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     init {
         startClockTicker()
+        if (_selectedCountryCode.value.isNotBlank()) {
+            val isStale = com.example.data.repository.HolidayRepository.isSyncStale(
+                lastSyncMillis = _lastHolidaySyncAt.value,
+                lastSyncCountry = prefs.getString(KEY_HOLIDAY_LAST_SYNC_COUNTRY, null),
+                currentCountry = _selectedCountryCode.value
+            )
+            if (_holidayRemindersEnabled.value || isStale) {
+                ensureHolidaysLoaded()
+            }
+        }
     }
 
     private fun startClockTicker() {
@@ -257,6 +339,9 @@ class DateTimeViewModel(application: Application) : AndroidViewModel(application
 
     fun setActiveTab(tab: Int) {
         _activeTab.value = tab
+        if (tab == 5) {
+            ensureHolidaysLoaded()
+        }
     }
 
     fun onPreviousMonth() {
@@ -470,6 +555,188 @@ class DateTimeViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             val repo = noteRepository ?: return@launch
             repo.deleteNote(note.id)
+        }
+    }
+
+    // --- Government Holiday & Reminder Operations ---
+
+    fun ensureHolidaysLoaded() {
+        val repo = holidayRepository ?: return
+        val isStale = com.example.data.repository.HolidayRepository.isSyncStale(
+            lastSyncMillis = _lastHolidaySyncAt.value,
+            lastSyncCountry = prefs.getString(KEY_HOLIDAY_LAST_SYNC_COUNTRY, null),
+            currentCountry = _selectedCountryCode.value
+        )
+        if (_availableCountries.value.isEmpty() || _selectedCountryCode.value.isBlank() || holidays.value.isEmpty() || isStale) {
+            loadCountriesAndSyncHolidays(forceCountries = _availableCountries.value.isEmpty())
+        }
+    }
+
+    fun loadCountriesAndSyncHolidays(forceCountries: Boolean = false) {
+        val repo = holidayRepository ?: return
+        if (_countriesLoading.value || _holidaysLoading.value) return
+
+        viewModelScope.launch {
+            _holidaysError.value = null
+            if (forceCountries || _availableCountries.value.isEmpty()) {
+                _countriesLoading.value = true
+                val countriesResult = repo.fetchAvailableCountries()
+                _countriesLoading.value = false
+
+                countriesResult.onSuccess { countries ->
+                    _availableCountries.value = countries
+                    if (_selectedCountryCode.value.isBlank() && countries.isNotEmpty()) {
+                        val deviceCountry = Locale.getDefault().country.uppercase(Locale.US)
+                        val picked = countries.firstOrNull { it.countryCode.equals(deviceCountry, ignoreCase = true) }
+                            ?: countries.firstOrNull { it.countryCode.equals("US", ignoreCase = true) }
+                            ?: countries.first()
+                        persistCountrySelection(picked.countryCode, picked.name)
+                    }
+                }.onFailure { err ->
+                    if (_selectedCountryCode.value.isBlank()) {
+                        _holidaysError.value = err.localizedMessage ?: "Failed to load country list"
+                        return@launch
+                    }
+                }
+            }
+
+            val code = _selectedCountryCode.value
+            val name = _selectedCountryName.value.ifBlank { code }
+            if (code.isNotBlank()) {
+                syncHolidaysInternal(code, name)
+            }
+        }
+    }
+
+    fun refreshHolidays() {
+        loadCountriesAndSyncHolidays(forceCountries = _availableCountries.value.isEmpty())
+    }
+
+    fun selectHolidayCountry(countryCode: String, countryName: String) {
+        val repo = holidayRepository ?: return
+        val oldCode = _selectedCountryCode.value
+        if (oldCode.equals(countryCode, ignoreCase = true) && holidays.value.isNotEmpty()) {
+            return
+        }
+
+        viewModelScope.launch {
+            if (oldCode.isNotBlank()) {
+                val oldHolidays = repo.getHolidaysOnce(oldCode)
+                scheduler.cancelHolidayReminders(oldHolidays)
+            }
+            persistCountrySelection(countryCode, countryName)
+            syncHolidaysInternal(countryCode, countryName)
+        }
+    }
+
+    private fun persistCountrySelection(countryCode: String, countryName: String) {
+        _selectedCountryCode.value = countryCode
+        _selectedCountryName.value = countryName
+        prefs.edit()
+            .putString(KEY_HOLIDAY_COUNTRY_CODE, countryCode)
+            .putString(KEY_HOLIDAY_COUNTRY_NAME, countryName)
+            .apply()
+    }
+
+    private suspend fun syncHolidaysInternal(countryCode: String, countryName: String) {
+        val repo = holidayRepository ?: return
+        _holidaysLoading.value = true
+        _holidaysError.value = null
+        val result = repo.syncAndReconcileReminders(
+            countryCode = countryCode,
+            countryName = countryName,
+            scheduler = scheduler,
+            remindersEnabled = _holidayRemindersEnabled.value,
+            daysBefore = _holidayRemindDaysBefore.value,
+            hour = _holidayRemindHour.value,
+            minute = _holidayRemindMinute.value
+        )
+        _holidaysLoading.value = false
+
+        result.onSuccess {
+            val now = System.currentTimeMillis()
+            _lastHolidaySyncAt.value = now
+            prefs.edit()
+                .putLong(KEY_HOLIDAY_LAST_SYNC_AT, now)
+                .putString(KEY_HOLIDAY_LAST_SYNC_COUNTRY, countryCode)
+                .apply()
+        }.onFailure { err ->
+            _holidaysError.value = err.localizedMessage ?: "Could not fetch holidays"
+        }
+    }
+
+    fun setHolidayRemindersEnabled(enabled: Boolean) {
+        _holidayRemindersEnabled.value = enabled
+        prefs.edit().putBoolean(KEY_HOLIDAY_REMINDERS_ENABLED, enabled).apply()
+        val repo = holidayRepository ?: return
+        val code = _selectedCountryCode.value
+        if (code.isBlank()) return
+
+        viewModelScope.launch {
+            val list = repo.getHolidaysOnce(code)
+            if (enabled) {
+                scheduler.scheduleHolidayReminders(
+                    holidays = list,
+                    daysBefore = _holidayRemindDaysBefore.value,
+                    hour = _holidayRemindHour.value,
+                    minute = _holidayRemindMinute.value
+                )
+            } else {
+                scheduler.cancelHolidayReminders(list)
+            }
+        }
+    }
+
+    fun setHolidayRemindDaysBefore(days: Int) {
+        val clamped = days.coerceIn(0, 30)
+        _holidayRemindDaysBefore.value = clamped
+        prefs.edit().putInt(KEY_HOLIDAY_REMIND_DAYS_BEFORE, clamped).apply()
+        rescheduleActiveHolidayReminders()
+    }
+
+    fun setHolidayRemindTime(hour: Int, minute: Int) {
+        val safeHour = hour.coerceIn(0, 23)
+        val safeMinute = minute.coerceIn(0, 59)
+        _holidayRemindHour.value = safeHour
+        _holidayRemindMinute.value = safeMinute
+        prefs.edit()
+            .putInt(KEY_HOLIDAY_REMIND_HOUR, safeHour)
+            .putInt(KEY_HOLIDAY_REMIND_MINUTE, safeMinute)
+            .apply()
+        rescheduleActiveHolidayReminders()
+    }
+
+    fun toggleSingleHolidayReminder(holiday: HolidayEntity, enabled: Boolean) {
+        val repo = holidayRepository ?: return
+        viewModelScope.launch {
+            repo.toggleHolidayReminder(holiday.id, enabled)
+            val updated = holiday.copy(reminderEnabled = enabled)
+            if (enabled && _holidayRemindersEnabled.value) {
+                scheduler.scheduleHolidayReminder(
+                    holiday = updated,
+                    daysBefore = _holidayRemindDaysBefore.value,
+                    hour = _holidayRemindHour.value,
+                    minute = _holidayRemindMinute.value
+                )
+            } else {
+                scheduler.cancelHolidayReminder(updated)
+            }
+        }
+    }
+
+    private fun rescheduleActiveHolidayReminders() {
+        val repo = holidayRepository ?: return
+        val code = _selectedCountryCode.value
+        if (code.isBlank() || !_holidayRemindersEnabled.value) return
+
+        viewModelScope.launch {
+            val list = repo.getHolidaysOnce(code)
+            scheduler.scheduleHolidayReminders(
+                holidays = list,
+                daysBefore = _holidayRemindDaysBefore.value,
+                hour = _holidayRemindHour.value,
+                minute = _holidayRemindMinute.value
+            )
         }
     }
 }

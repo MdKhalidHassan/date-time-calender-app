@@ -29,6 +29,18 @@ class BootReceiver : BroadcastReceiver() {
             dateAlarms.forEach { alarm ->
                 scheduler.scheduleDateAlarm(alarm)
             }
+
+            // Reschedule enabled government holiday reminders
+            val prefs = context.getSharedPreferences("datetime_prefs", Context.MODE_PRIVATE)
+            val holidayRemindersEnabled = prefs.getBoolean("pref_holiday_reminders_enabled", false)
+            val countryCode = prefs.getString("pref_holiday_country_code", null)
+            if (holidayRemindersEnabled && !countryCode.isNullOrBlank()) {
+                val daysBefore = prefs.getInt("pref_holiday_remind_days_before", 1)
+                val hour = prefs.getInt("pref_holiday_remind_hour", 9)
+                val minute = prefs.getInt("pref_holiday_remind_minute", 0)
+                val holidays = appContext.holidayRepository.getEnabledHolidays(countryCode)
+                scheduler.scheduleHolidayReminders(holidays, daysBefore, hour, minute)
+            }
         }
     }
 }

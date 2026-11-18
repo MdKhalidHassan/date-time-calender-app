@@ -3,17 +3,22 @@ package com.example.ui.dialogs
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
@@ -45,6 +50,7 @@ import com.example.model.TimeZoneData
 import com.example.model.TimeZoneItem
 import java.util.TimeZone
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TimeZoneSelectorDialog(
     currentTimeZoneId: String,
@@ -99,6 +105,7 @@ fun TimeZoneSelectorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.imePadding(),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -126,7 +133,7 @@ fun TimeZoneSelectorDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 480.dp),
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Quick Reset to Device Timezone Button
@@ -178,9 +185,10 @@ fun TimeZoneSelectorDialog(
 
                 // Category Chips (when not actively searching)
                 if (searchQuery.isEmpty()) {
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         FilterChip(
                             selected = selectedCategory == 0,
@@ -206,8 +214,7 @@ fun TimeZoneSelectorDialog(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .heightIn(max = 300.dp)
+                        .heightIn(min = 160.dp, max = 300.dp)
                 ) {
                     if (filteredItems.isEmpty()) {
                         Column(
